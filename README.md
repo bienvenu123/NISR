@@ -45,13 +45,14 @@ The script writes only district aggregates to `outputs/eicv7_district_double_exc
 
 ## Run the dashboard
 
-Install the packages in `requirements.txt`, then run:
+Install the packages in `requirements.txt`, then launch the app from the project root:
 
 ```powershell
-streamlit run dashboard.py
+python -m pip install -r requirements.txt
+python -m streamlit run dashboard.py
 ```
 
-The dashboard provides selectable district choropleths, rankings, national weighted summary measures, small-sample notes and a CSV download.
+The dashboard provides a district choropleth, selectable measures, district ranking and profile, burden chart, weighted national summaries, reliability notes, definitions and a CSV download. Streamlit 1.57 or newer is required.
 
 ## Deliverables
 

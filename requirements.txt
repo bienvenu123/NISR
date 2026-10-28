@@ -1,5 +1,5 @@
 numpy>=1.24
 pandas>=2.0
 plotly>=5.18
-streamlit>=1.30
+streamlit>=1.57
 python-docx>=1.1
