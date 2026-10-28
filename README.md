@@ -60,11 +60,23 @@ python -m streamlit run dashboard.py
 
 The dashboard provides a district choropleth, selectable measures, district ranking and profile, burden chart, weighted national summaries, reliability notes, definitions and a CSV download. Streamlit 1.57 or newer is required.
 
+## Deploy the dashboard
+
+The project is organized for [Streamlit Community Cloud](https://share.streamlit.io/). The entrypoint is `dashboard.py`; `requirements.txt` and `.streamlit/config.toml` are already in the repository root. The district summary CSV and public district boundaries are included, so the deployed dashboard does not need access to the local `Microdata/` folder.
+
+1. Sign in to Streamlit Community Cloud with the GitHub account that can access this repository.
+2. Choose **Create app** → **Yup, I have an app**.
+3. Select repository `bienvenu123/NISR`, branch `main`, and main file path `dashboard.py`.
+4. In **Advanced settings**, select Python 3.13, then deploy. You can choose an available app subdomain if desired.
+5. After deployment, open the generated `*.streamlit.app` URL and check the district map, filters, and profile panels.
+
+The app contains district-level aggregate estimates and public boundaries only. Do not add raw EICV microdata to the repository. Community Cloud copies the repository files into the app environment; future code changes pushed to the selected branch trigger an app update.
+
 ## Deliverables
 
 The current analysis outputs are in `outputs/eicv7_district_double_exclusion.csv`. The two-page policy brief, seven-slide presentation and installable Android APK are in `deliverables/`.
 
-The Android app source, offline aggregate data assets and Windows build instructions are in `mobile_app/`. Build a fresh APK with `mobile_app/build_android.ps1`; see [the mobile app README](mobile_app/README.md) for installation steps. The app contains only district aggregates and public boundaries, not household-level microdata.
+The Android app source, offline aggregate data assets and Windows build instructions are in `mobile_app/`. Build a fresh APK with `mobile_app/build_android.ps1`; see [the mobile app README](mobile_app/README.md) for installation steps. The live dashboard sidebar also offers the APK for download. Installed copies check the public GitHub aggregate CSV at startup and retain a bundled offline snapshot; push updated district outputs to `main` to make refreshed estimates available. The app contains only district aggregates and public boundaries, not household-level microdata.
 
 Rebuild the brief after changing its text or analysis values:
 

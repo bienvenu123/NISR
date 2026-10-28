@@ -51,8 +51,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Android resource compilation failed.' }
     -A (Join-Path $appRoot 'assets') `
     --min-sdk-version 23 `
     --target-sdk-version 35 `
-    --version-code 1 `
-    --version-name '1.0' `
+    --version-code 2 `
+    --version-name '1.1' `
     --debug-mode `
     $compiledResources
 if ($LASTEXITCODE -ne 0) { throw 'Android resource linking failed.' }

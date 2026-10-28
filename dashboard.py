@@ -14,6 +14,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent
 CSV_PATH = ROOT / "outputs" / "eicv7_district_double_exclusion.csv"
 GEOJSON_PATH = ROOT / "data" / "rwanda_districts.geojson"
+APK_PATH = ROOT / "deliverables" / "rwanda_inclusion_android.apk"
 
 METRICS = {
     "Double exclusion rate": ("double_exclusion_among_poor", "% of poor households", True),
@@ -149,6 +150,14 @@ with st.sidebar:
         mime="text/csv",
         width="stretch",
     )
+    if APK_PATH.exists():
+        st.download_button(
+            "Download Android app (APK)",
+            data=APK_PATH.read_bytes(),
+            file_name=APK_PATH.name,
+            mime="application/vnd.android.package-archive",
+            width="stretch",
+        )
     st.caption("Aggregate district estimates only. Household microdata is not included.")
 
 metric, metric_unit, is_rate = METRICS[metric_label]

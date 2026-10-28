@@ -47,7 +47,7 @@ import java.util.concurrent.Executors;
 
 /** Offline-first Android companion for the public EICV7 district aggregates. */
 public final class MainActivity extends Activity {
-    private static final String LIVE_DATA_URL = "http://10.0.2.2:8765/district_estimates.csv";
+    private static final String LIVE_DATA_URL = "https://raw.githubusercontent.com/bienvenu123/NISR/main/outputs/eicv7_district_double_exclusion.csv";
     private static final int NAVY = Color.rgb(23, 54, 93);
     private static final int TEAL = Color.rgb(8, 126, 139);
     private static final int INK = Color.rgb(29, 41, 53);
