@@ -15,6 +15,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewConfiguration;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -188,7 +189,7 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         LinearLayout page = column();
         page.setPadding(dp(18), dp(18), dp(18), dp(28));
-        page.addView(header("RWANDA  /  EICV7 2023–24", "Double exclusion", "Explore where poverty and gaps in services overlap across Rwanda’s districts."));
+        page.addView(header("RWANDA  /  EICV7 2023â€“24", "Double exclusion", "Explore where poverty and gaps in services overlap across Rwandaâ€™s districts."));
         double weightedPoorHouseholds = 0, weightedPopulation = 0, weightedPoorPopulation = 0;
         double weightedVup = 0, weightedFinance = 0, weightedDoubleExcluded = 0;
         for (District d : districts) {
@@ -249,7 +250,7 @@ public final class MainActivity extends Activity {
         legend.addView(body("Higher", 10, MUTED), new LinearLayout.LayoutParams(0, -2, 1));
         mapCard.addView(legend);
         mapCard.addView(body("Tap a district to view its profile. Shading reflects the selected measure.", 11, MUTED));
-        page.addView(mapCard, margins(0, 10, 0, 14));
+        page.addView(mapCard, margins(0, 0, 0, 14));
 
         LinearLayout searchRow = row();
         EditText search = new EditText(this);
@@ -275,7 +276,7 @@ public final class MainActivity extends Activity {
             @Override public void afterTextChanged(Editable s) { }
         });
         page.addView(methodsCard());
-        TextView footer = body("Source: NISR EICV7 2023/24 · District summaries · No household records", 10, MUTED);
+        TextView footer = body("Source: NISR EICV7 2023/24 Â· District summaries Â· No household records", 10, MUTED);
         footer.setGravity(Gravity.CENTER);
         footer.setPadding(0, dp(18), 0, 0);
         page.addView(footer);
@@ -311,13 +312,13 @@ public final class MainActivity extends Activity {
             LinearLayout names = column();
             names.setPadding(dp(11), 0, dp(8), 0);
             names.addView(title(d.name, 15));
-            names.addView(body(String.format(Locale.US, "%.1f%% double exclusion · %s households", d.exclusion * 100, count(d.excludedHouseholds)), 11, MUTED));
+            names.addView(body(String.format(Locale.US, "%.1f%% double exclusion Â· %s households", d.exclusion * 100, count(d.excludedHouseholds)), 11, MUTED));
             card.addView(names, new LinearLayout.LayoutParams(0, -2, 1));
             TextView value = title(formatMetric(d), 15);
             value.setTextColor(NAVY);
             card.addView(value);
             card.setOnClickListener(v -> showDistrict(item));
-            districtList.addView(card, margins(0, 7, 0, 0));
+            districtList.addView(card, margins(0, 0, 0, 7));
         }
     }
 
@@ -340,22 +341,27 @@ public final class MainActivity extends Activity {
         detailOpen = true;
         ScrollView scroll = new ScrollView(this);
         LinearLayout page = column();
-        page.setPadding(dp(18), dp(20), dp(18), dp(30));
-        TextView back = body("‹   ALL DISTRICTS", 13, TEAL);
+        page.setPadding(dp(18), dp(56), dp(18), dp(30));
+        TextView back = body("<  ALL DISTRICTS", 14, TEAL);
         back.setTypeface(null, Typeface.BOLD);
-        back.setPadding(0, dp(4), 0, dp(18));
+        back.setGravity(Gravity.CENTER_VERTICAL);
+        back.setPadding(dp(14), 0, dp(14), 0);
+        back.setMinHeight(dp(48));
+        back.setBackground(rounded(Color.WHITE, LINE, dp(12)));
+        back.setContentDescription("Back to all districts");
+        back.setClickable(true);
         back.setOnClickListener(v -> showHome());
-        page.addView(back);
-        page.addView(header("DISTRICT PROFILE", d.name, "EICV7 household estimates · Weighted district summary"));
+        page.addView(back, margins(0, dp(48), 0, 14));
+        page.addView(header("DISTRICT PROFILE", d.name, "EICV7 household estimates Â· Weighted district summary"));
         LinearLayout highlight = cardColumn();
         highlight.addView(body("DOUBLE EXCLUSION AMONG POOR HOUSEHOLDS", 11, TEAL));
         TextView mainRate = title(String.format(Locale.US, "%.1f%%", d.exclusion * 100), 38);
         mainRate.setTextColor(NAVY);
         mainRate.setPadding(0, dp(6), 0, dp(2));
         highlight.addView(mainRate);
-        highlight.addView(body(String.format(Locale.US, "Approx. 95%% interval: %.1f%% – %.1f%%", d.exclusionLow * 100, d.exclusionHigh * 100), 13, MUTED));
+        highlight.addView(body(String.format(Locale.US, "Approx. 95%% interval: %.1f%% â€“ %.1f%%", d.exclusionLow * 100, d.exclusionHigh * 100), 13, MUTED));
         highlight.addView(body("Estimated affected poor households: " + count(d.excludedHouseholds), 13, INK));
-        page.addView(highlight, margins(0, 2, 0, 14));
+        page.addView(highlight, margins(0, 0, 0, 14));
 
         page.addView(sectionLabel("Household access"));
         page.addView(profileRow("VUP participation", d.vup, "Among poor households", TEAL));
@@ -370,7 +376,7 @@ public final class MainActivity extends Activity {
             TextView caution = body("Interpret with caution: " + d.reliability, 12, GOLD);
             caution.setPadding(dp(12), dp(12), dp(12), dp(12));
             caution.setBackground(rounded(Color.rgb(255, 248, 237), Color.rgb(242, 219, 187), dp(10)));
-            page.addView(caution, margins(0, 12, 0, 0));
+            page.addView(caution, margins(0, 0, 0, 12));
         }
         page.addView(methodsCard());
         scroll.addView(page);
@@ -467,6 +473,9 @@ public final class MainActivity extends Activity {
     private final class MapView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final List<RenderedBoundary> rendered = new ArrayList<>();
+        private float touchDownX, touchDownY;
+        private boolean moved;
+        private final int touchSlop = ViewConfiguration.get(MainActivity.this).getScaledTouchSlop();
         private double minX = Double.MAX_VALUE, maxX = -Double.MAX_VALUE, minY = Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
         MapView() {
             super(MainActivity.this);
@@ -510,12 +519,26 @@ public final class MainActivity extends Activity {
             }
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (event.getAction() == MotionEvent.ACTION_UP) {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                touchDownX = event.getX();
+                touchDownY = event.getY();
+                moved = false;
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                if (Math.abs(event.getY() - touchDownY) > touchSlop || Math.abs(event.getX() - touchDownX) > touchSlop) {
+                    moved = true;
+                    // Let the containing ScrollView take over vertical swipes.
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_UP && !moved) {
                 for (int i = rendered.size() - 1; i >= 0; i--) if (rendered.get(i).region.contains((int) event.getX(), (int) event.getY())) {
                     showDistrict(rendered.get(i).district); return true;
                 }
             }
-            return true;
+            return event.getAction() != MotionEvent.ACTION_CANCEL;
         }
         private int blend(int start, int end, float t) {
             t = Math.max(0, Math.min(1, t));
