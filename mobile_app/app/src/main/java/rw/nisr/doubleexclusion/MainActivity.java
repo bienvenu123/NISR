@@ -27,8 +27,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -38,9 +42,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** Offline-first Android companion for the public EICV7 district aggregates. */
 public final class MainActivity extends Activity {
+    private static final String LIVE_DATA_URL = "http://10.0.2.2:8765/district_estimates.csv";
     private static final int NAVY = Color.rgb(23, 54, 93);
     private static final int TEAL = Color.rgb(8, 126, 139);
     private static final int INK = Color.rgb(29, 41, 53);
@@ -57,6 +64,9 @@ public final class MainActivity extends Activity {
     private LinearLayout districtList;
     private TextView listCount;
     private MapView mapView;
+    private TextView syncStatus;
+    private String dataStatus = "Bundled snapshot · checking for updates";
+    private final ExecutorService dataExecutor = Executors.newSingleThreadExecutor();
     private boolean detailOpen = false;
 
     private static final String[] METRICS = {
@@ -77,6 +87,7 @@ public final class MainActivity extends Activity {
             loadDistricts();
             loadBoundaries();
             showHome();
+            refreshDistricts();
         } catch (Exception error) {
             showLoadError(error);
         }
@@ -89,8 +100,11 @@ public final class MainActivity extends Activity {
     }
 
     private void loadDistricts() throws Exception {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                getAssets().open("district_estimates.csv"), StandardCharsets.UTF_8))) {
+        loadDistricts(getAssets().open("district_estimates.csv"));
+    }
+
+    private void loadDistricts(InputStream input) throws Exception {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
             String first = reader.readLine();
             if (first == null) throw new IllegalStateException("The district CSV is empty.");
             List<String> headers = parseCsv(first);
@@ -120,6 +134,48 @@ public final class MainActivity extends Activity {
             }
         }
         if (districts.isEmpty()) throw new IllegalStateException("No district rows were found.");
+    }
+
+    private void refreshDistricts() {
+        dataStatus = "Checking for updated district data…";
+        if (syncStatus != null) syncStatus.setText(dataStatus);
+        dataExecutor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(LIVE_DATA_URL).openConnection();
+                connection.setConnectTimeout(2500);
+                connection.setReadTimeout(4000);
+                connection.setRequestProperty("Cache-Control", "no-cache");
+                connection.setUseCaches(false);
+                byte[] csv;
+                try (InputStream stream = connection.getInputStream()) {
+                    ByteArrayOutputStream output = new ByteArrayOutputStream();
+                    byte[] buffer = new byte[8192];
+                    int count;
+                    while ((count = stream.read(buffer)) != -1) output.write(buffer, 0, count);
+                    csv = output.toByteArray();
+                }
+                runOnUiThread(() -> {
+                    try {
+                        districts.clear();
+                        byCode.clear();
+                        loadDistricts(new ByteArrayInputStream(csv));
+                        dataStatus = "Live data · refreshed just now";
+                        showHome();
+                    } catch (Exception error) {
+                        dataStatus = "Offline snapshot · live data could not be read";
+                        if (syncStatus != null) syncStatus.setText(dataStatus);
+                    }
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    dataStatus = "Offline snapshot · tap Refresh to retry";
+                    if (syncStatus != null) syncStatus.setText(dataStatus);
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
     }
 
     private void loadBoundaries() throws Exception {
@@ -190,6 +246,18 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         page.setPadding(dp(18), dp(18), dp(18), dp(28));
         page.addView(header("RWANDA  /  EICV7 2023â€“24", "Double exclusion", "Explore where poverty and gaps in services overlap across Rwandaâ€™s districts."));
+        LinearLayout dataRow = row();
+        dataRow.setGravity(Gravity.CENTER_VERTICAL);
+        syncStatus = body(dataStatus, 11, MUTED);
+        dataRow.addView(syncStatus, new LinearLayout.LayoutParams(0, dp(42), 1));
+        TextView refresh = body("Refresh", 12, TEAL);
+        refresh.setTypeface(null, Typeface.BOLD);
+        refresh.setGravity(Gravity.CENTER);
+        refresh.setBackground(rounded(Color.WHITE, LINE, dp(10)));
+        refresh.setPadding(dp(14), 0, dp(14), 0);
+        refresh.setOnClickListener(v -> refreshDistricts());
+        dataRow.addView(refresh, new LinearLayout.LayoutParams(-2, dp(42)));
+        page.addView(dataRow, margins(0, 0, 0, 8));
         double weightedPoorHouseholds = 0, weightedPopulation = 0, weightedPoorPopulation = 0;
         double weightedVup = 0, weightedFinance = 0, weightedDoubleExcluded = 0;
         for (District d : districts) {
