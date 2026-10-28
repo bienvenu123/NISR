@@ -10,6 +10,7 @@ The analysis reads these EICV7 cross-section files from `Microdata/Cross_Section
 - `CS_S01_S5_S7_Household.dta`: survey strata (`strata_id`).
 - `CS_S9D1_Direct_Support.dta`, `CS_S9D2_Classic_Public_Work.dta`, `CS_S9D3_Expanded_Public_Work.dta`, `CS_S9D4_NSDS.dta`, `CS_S9D5_Financial_Services.dta`: VUP program flags.
 - `CS_S10C_Savings.dta`: financial account, mobile money and tontine measures.
+- `CS_S10A1_A2_credits.dta`: loan application records and the respondent-stated reason a loan was denied.
 - `CS_S9B_transfers_in.dta` is available but records household transfers/remittances in, not a verified government social-protection benefit; it is not included in VUP coverage.
 
 The [official NISR microdata catalog](https://microdata.statistics.gov.rw/index.php/catalog/119) identifies EICV7 2023-2024; the [NISR poverty profile](https://statistics.gov.rw/sites/default/files/documents/2025-07/EICV7_Poverty%20Profile.pdf) says fieldwork ran from October 2023 to October 2024. Confirm metadata and data-use terms with NISR before publishing. Do not commit or share raw microdata.
@@ -26,6 +27,11 @@ District boundaries are stored in `data/rwanda_districts.geojson`. The file was 
 - **District burden:** sum of household weights for poor households classified as double-excluded. The exclusion rate among poor households is also reported.
 
 The savings module has repeated person/account records, so the script collapses it to one household indicator before joining. VUP eligibility is not observed; these results describe non-coverage among poor households, not a program eligibility gap or causal impact.
+
+The district output also includes reported loan-denial reasons among poor households with a denied loan recorded, and reported enrollment reasons among poor VUP Direct Support households. These are subgroup indicators, not explanations for lacking a bank/mobile account, and they do not establish VUP eligibility. Households can contribute to more than one loan-denial reason when multiple credit records are present; subgroup sample counts are included for context.
+
+- Loan-denial responses use `s10aq1 == 1` and the recorded `s10aq2` category: insufficient income, insufficient collateral, debt-history problems, unclear loan purpose, or other reason. Each reason is collapsed to a household indicator before estimating its weighted share among poor households with a recorded denial reason.
+- VUP Direct Support enrollment responses use `s9d1q2 == 1` and `s9d1q3`: household had no workers, someone cared for a person with severe disability, or respondent did not know. Estimates are weighted shares among poor households reporting Direct Support.
 
 ## Reproduce the district estimates
 

@@ -18,6 +18,8 @@ The build script requires Android SDK platform 36.1, Build Tools 36.1.0, and the
 
 The app keeps a bundled district CSV as an offline fallback, then checks the local data feed when it opens. Tap **Refresh** on the overview to fetch the current district CSV without rebuilding or reinstalling the APK. The feed reads `outputs/eicv7_district_double_exclusion.csv` on every request, so rerun the analysis first when you need to update the results.
 
+District profiles include the EICV7-reported reasons for denied loans and VUP Direct Support enrollment, where the district sample supports an estimate. These apply only to the relevant respondents. They do not identify why a household lacks a bank/mobile account or determine VUP eligibility.
+
 Start the feed from the project root and leave its terminal running:
 
 ```powershell

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 from pathlib import Path
 
@@ -75,7 +76,12 @@ st.markdown(
 
 
 @st.cache_data(show_spinner="Loading EICV7 district estimates…")
-def load_data(csv_path: str, geo_path: str) -> tuple[pd.DataFrame, dict]:
+def load_data(
+    csv_path: str,
+    geo_path: str,
+    csv_mtime_ns: int,
+    geo_mtime_ns: int,
+) -> tuple[pd.DataFrame, dict]:
     frame = pd.read_csv(csv_path)
     with open(geo_path, encoding="utf-8") as source:
         shapes = json.load(source)
@@ -87,7 +93,12 @@ if not CSV_PATH.exists() or not GEOJSON_PATH.exists():
     st.stop()
 
 try:
-    data, geojson = load_data(str(CSV_PATH), str(GEOJSON_PATH))
+    data, geojson = load_data(
+        str(CSV_PATH),
+        str(GEOJSON_PATH),
+        CSV_PATH.stat().st_mtime_ns,
+        GEOJSON_PATH.stat().st_mtime_ns,
+    )
 except (OSError, ValueError, json.JSONDecodeError) as exc:
     st.error(f"Could not read the dashboard inputs: {exc}")
     st.stop()
@@ -128,6 +139,9 @@ with st.sidebar:
     sort_order = st.radio("Rank districts", ["Highest first", "Lowest first"], horizontal=True)
     st.divider()
     st.markdown("**Download**")
+    if st.button("Refresh district estimates", icon=":material/refresh:", width="stretch"):
+        load_data.clear()
+        st.rerun()
     st.download_button(
         "Download district data (CSV)",
         data=CSV_PATH.read_bytes(),
@@ -165,41 +179,100 @@ map_col, rank_col = st.columns([1.25, 0.9], gap="large")
 with map_col:
     st.subheader("Geographic pattern")
     st.markdown(f"<div class='section-note'>District distribution · {metric_label.lower()}</div>", unsafe_allow_html=True)
-    hover = {
-        metric: ":.1f" if is_rate else ":,.0f",
-        "sample_poor_households": True,
-        "double_exclusion_among_poor": ":.1%",
-        "vup_coverage_among_poor": ":.1%",
-        "financial_access_among_poor": ":.1%",
-        "district_code_str": False,
+    # Draw the same GeoJSON coordinates as the Android app and fit the SVG
+    # viewBox to Rwanda's actual district bounds. Plotly's geo renderer was
+    # leaving the country at world-map scale in some browser sessions.
+    feature_values = {
+        str(row.district_code): row
+        for row in map_data.itertuples(index=False)
     }
-    fig = px.choropleth(
-        map_data,
-        geojson=geojson,
-        locations="district_code_str",
-        featureidkey="properties.dist_code",
-        color=metric,
-        hover_name="district",
-        hover_data=hover,
-        color_continuous_scale=[[0, "#E7F3F3"], [0.48, "#58A7A7"], [1, "#17365D"]],
-        labels={metric: metric_unit},
+    points = []
+    for feature in geojson["features"]:
+        geometry = feature["geometry"]
+        polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+        for polygon in polygons:
+            for lon, lat in polygon[0]:
+                points.append((lon, lat))
+    min_lon = min(point[0] for point in points)
+    max_lon = max(point[0] for point in points)
+    min_lat = min(point[1] for point in points)
+    max_lat = max(point[1] for point in points)
+    pad_lon = (max_lon - min_lon) * 0.025
+    pad_lat = (max_lat - min_lat) * 0.025
+    min_lon, max_lon = min_lon - pad_lon, max_lon + pad_lon
+    min_lat, max_lat = min_lat - pad_lat, max_lat + pad_lat
+
+    values = map_data[metric].fillna(0).astype(float)
+    max_value = max(float(values.max()), 1e-12)
+    start_rgb, end_rgb = (231, 243, 243), (23, 54, 93)
+    paths = []
+    for feature in geojson["features"]:
+        properties = feature["properties"]
+        code = str(properties.get("dist_code", ""))
+        row = feature_values.get(code)
+        if row is None:
+            continue
+        fraction = max(0.0, min(1.0, float(getattr(row, metric)) / max_value))
+        fill = "#" + "".join(
+            f"{round(a + (b - a) * fraction):02X}" for a, b in zip(start_rgb, end_rgb)
+        )
+        geometry = feature["geometry"]
+        polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+        commands = []
+        for polygon in polygons:
+            ring = polygon[0]
+            commands.append("M " + " L ".join(
+                f"{lon:.6f},{max_lat - lat:.6f}" for lon, lat in ring
+            ) + " Z")
+        estimate = float(getattr(row, metric))
+        formatted = f"{estimate:.1f}%" if is_rate else f"{estimate:,.0f}"
+        title = html.escape(
+            f"{row.district}: {formatted} · Poor households sampled: {int(row.sample_poor_households):,}"
+        )
+        selected = selected_district == row.district
+        opacity = "1" if selected_district == "All districts" or selected else "0.28"
+        outline = "#D99136" if selected else "#FFFFFF"
+        outline_width = "2.8" if selected else "1.2"
+        paths.append(
+            f'<path d="{" ".join(commands)}" fill="{fill}" fill-opacity="{opacity}" '
+            f'stroke="{outline}" stroke-width="{outline_width}" '
+            f'vector-effect="non-scaling-stroke"><title>{title}</title></path>'
+        )
+    selected_rows = map_data.loc[map_data["district"].eq(selected_district)]
+    if not selected_rows.empty:
+        selected_row = selected_rows.iloc[0]
+        selected_value = selected_row[metric]
+        selected_formatted = f"{selected_value:.1f}%" if is_rate else f"{selected_value:,.0f}"
+        selected_label = html.escape(f"{selected_district} · {selected_formatted}")
+        badge_width = min(max(len(selected_label) * 0.055 + 0.24, 0.9), max_lon - min_lon - 0.08)
+        badge_height = (max_lat - min_lat) * 0.065
+        svg_label = (
+            f'<g aria-label="Selected district: {selected_label}">'
+            f'<rect x="{min_lon + 0.04:.6f}" y="{max_lat - badge_height - 0.04:.6f}" '
+            f'width="{badge_width:.6f}" height="{badge_height:.6f}" rx="0.06" fill="#17365D"/>'
+            f'<text x="{min_lon + 0.09:.6f}" y="{max_lat - badge_height / 2 - 0.04:.6f}" '
+            f'dominant-baseline="middle" fill="#FFFFFF" font-family="Arial,sans-serif" '
+            f'font-size="{(max_lat - min_lat) * 0.037:.6f}" font-weight="700">{selected_label}</text>'
+            '</g>'
+        )
+    else:
+        svg_label = ""
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{min_lon:.6f} 0 '
+        f'{max_lon - min_lon:.6f} {max_lat - min_lat:.6f}" role="img" '
+        f'aria-label="Rwanda districts shaded by {html.escape(metric_label)}" '
+        'style="display:block;width:100%;height:auto;max-width:100%">'
+        + "".join(paths) + svg_label + "</svg>"
     )
-    fig.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
-    fig.update_layout(
-        height=540,
-        margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Aptos, Segoe UI, Arial, sans-serif", color=COLORS["ink"]),
-        coloraxis_colorbar=dict(title=metric_unit, thickness=13, len=0.72, outlinewidth=0),
+    st.markdown(svg, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="section-note" style="text-align:right">Lower '
+        f'<span style="display:inline-block;width:110px;height:8px;border-radius:6px;'
+        f'background:linear-gradient(90deg,#E7F3F3,#17365D);vertical-align:middle"></span> Higher '
+        f'· {html.escape(metric_unit)}</div>',
+        unsafe_allow_html=True,
     )
-    st.plotly_chart(
-        fig,
-        width="stretch",
-        alt=f"District choropleth map of Rwanda showing {metric_label.lower()} by district.",
-        config={"displayModeBar": False, "scrollZoom": False},
-    )
-    st.caption("Select or hover over a district for the estimate and sample size. Shading shows the selected measure.")
+    st.caption("Hover over a district for its estimate and sample size. Use District detail in the sidebar to open its profile.")
 
 with rank_col:
     st.subheader("District ranking")
@@ -278,6 +351,73 @@ with right:
         reliability_note = row["reliability_flag"]
         if pd.notna(reliability_note) and str(reliability_note).strip():
             st.warning(str(reliability_note))
+
+        credit_reason_fields = {
+            "Insufficient collateral": "insufficient_collateral_among_poor_with_recorded_loan_denial",
+            "Insufficient income": "insufficient_income_among_poor_with_recorded_loan_denial",
+            "Debt-history problems": "debt_history_problems_among_poor_with_recorded_loan_denial",
+            "Unclear loan purpose": "unclear_loan_purpose_among_poor_with_recorded_loan_denial",
+            "Other stated reason": "other_loan_denial_reason_among_poor_with_recorded_loan_denial",
+        }
+        vup_reason_fields = {
+            "Household had no workers": "vup_ds_reason_no_household_workers_among_poor_direct_support_households",
+            "Caring for a person with severe disability": "vup_ds_reason_care_for_severe_disability_among_poor_direct_support_households",
+            "Respondent did not know": "vup_ds_reason_dont_know_among_poor_direct_support_households",
+        }
+        optional_reason_columns = {
+            "credit_denial_recorded_among_poor",
+            "insufficient_income_among_poor_with_recorded_loan_denial_sample_n",
+            "vup_ds_reason_no_household_workers_among_poor_direct_support_households_sample_n",
+            *credit_reason_fields.values(),
+            *vup_reason_fields.values(),
+        }
+        if optional_reason_columns.issubset(data.columns):
+            with st.expander("Reported credit and VUP reasons", expanded=False):
+                st.caption(
+                    "EICV7 respondent reports only. These do not explain why a household "
+                    "lacks an account or establish VUP eligibility."
+                )
+                credit_n = int(row["insufficient_income_among_poor_with_recorded_loan_denial_sample_n"])
+                vup_n = int(row["vup_ds_reason_no_household_workers_among_poor_direct_support_households_sample_n"])
+                st.markdown("**Loan denial recorded among poor households**")
+                st.metric(
+                    "Poor households with a denied loan recorded",
+                    f"{row['credit_denial_recorded_among_poor']:.1%}",
+                    help="Household-weighted share of all poor households; this is not a loan-denial rate among applicants.",
+                )
+                st.caption(f"Reason sample: {credit_n} poor households with a denied loan recorded. Categories may overlap across multiple loan records.")
+                credit_reasons = pd.DataFrame(
+                    {
+                        "Reported reason": list(credit_reason_fields),
+                        "Share of this subgroup": [
+                            f"{row[field]:.1%}" if pd.notna(row[field]) else "Not estimated"
+                            for field in credit_reason_fields.values()
+                        ],
+                    }
+                )
+                st.dataframe(
+                    credit_reasons,
+                    hide_index=True,
+                    width="stretch",
+                    alt=f"Reported reasons for denied loans among {credit_n} poor households in {row['district']}.",
+                )
+                st.markdown("**VUP Direct Support enrollment reasons among poor participants**")
+                st.caption(f"Respondent sample: {vup_n} poor households reporting Direct Support.")
+                vup_reasons = pd.DataFrame(
+                    {
+                        "Reported reason": list(vup_reason_fields),
+                        "Share of this subgroup": [
+                            f"{row[field]:.1%}" if pd.notna(row[field]) else "Not estimated"
+                            for field in vup_reason_fields.values()
+                        ],
+                    }
+                )
+                st.dataframe(
+                    vup_reasons,
+                    hide_index=True,
+                    width="stretch",
+                    alt=f"Reported VUP Direct Support enrollment reasons among {vup_n} poor households in {row['district']}.",
+                )
 
 with st.expander("Definitions, methods and limitations"):
     st.markdown(

@@ -128,6 +128,17 @@ public final class MainActivity extends Activity {
                 d.exclusionLow = number(cells, ix, "double_exclusion_among_poor_ci_low");
                 d.exclusionHigh = number(cells, ix, "double_exclusion_among_poor_ci_high");
                 d.excludedHouseholds = number(cells, ix, "estimated_double_excluded_poor_households");
+                d.creditDenial = number(cells, ix, "credit_denial_recorded_among_poor");
+                d.creditIncome = number(cells, ix, "insufficient_income_among_poor_with_recorded_loan_denial");
+                d.creditCollateral = number(cells, ix, "insufficient_collateral_among_poor_with_recorded_loan_denial");
+                d.creditDebtHistory = number(cells, ix, "debt_history_problems_among_poor_with_recorded_loan_denial");
+                d.creditLoanPurpose = number(cells, ix, "unclear_loan_purpose_among_poor_with_recorded_loan_denial");
+                d.creditOther = number(cells, ix, "other_loan_denial_reason_among_poor_with_recorded_loan_denial");
+                d.dsNoWorkers = number(cells, ix, "vup_ds_reason_no_household_workers_among_poor_direct_support_households");
+                d.dsCareDisability = number(cells, ix, "vup_ds_reason_care_for_severe_disability_among_poor_direct_support_households");
+                d.dsUnknown = number(cells, ix, "vup_ds_reason_dont_know_among_poor_direct_support_households");
+                d.creditDenialSample = integer(cells, ix, "insufficient_income_among_poor_with_recorded_loan_denial_sample_n");
+                d.directSupportSample = integer(cells, ix, "vup_ds_reason_no_household_workers_among_poor_direct_support_households_sample_n");
                 d.reliability = value(cells, ix, "reliability_flag");
                 districts.add(d);
                 byCode.put(d.code, d);
@@ -440,6 +451,17 @@ public final class MainActivity extends Activity {
         stats.addView(kpi(String.format(Locale.US, "%.1f%%", d.poverty * 100), "Population poverty", "Population weighted", 1), weight());
         stats.addView(kpi(count(d.samplePoor), "Poor households sampled", "District sample", 2), weight());
         page.addView(stats);
+        page.addView(sectionLabel("Recorded credit and VUP reasons"));
+        page.addView(body("These are reported reasons in EICV7, not explanations for lacking an account or evidence of VUP eligibility. Credit reasons are among poor households with a denied loan recorded (sample: " + d.creditDenialSample + "). VUP reasons are among poor direct-support households (sample: " + d.directSupportSample + "). A household with multiple loan records may appear under more than one reason.", 11, MUTED));
+        page.addView(profileRow("Poor households with a loan denial recorded", d.creditDenial, "Among all poor households", GOLD));
+        page.addView(profileRow("Insufficient collateral", d.creditCollateral, "Among poor households with a recorded denial", NAVY));
+        page.addView(profileRow("Insufficient income", d.creditIncome, "Among poor households with a recorded denial", NAVY));
+        page.addView(profileRow("Unclear loan purpose", d.creditLoanPurpose, "Among poor households with a recorded denial", NAVY));
+        page.addView(profileRow("Debt-history problems", d.creditDebtHistory, "Among poor households with a recorded denial", NAVY));
+        page.addView(profileRow("Other stated loan-denial reason", d.creditOther, "Among poor households with a recorded denial", NAVY));
+        page.addView(profileRow("VUP DS: no household workers", d.dsNoWorkers, "Reported enrollment reason among poor DS households", TEAL));
+        page.addView(profileRow("VUP DS: caring for severe disability", d.dsCareDisability, "Reported enrollment reason among poor DS households", TEAL));
+        page.addView(profileRow("VUP DS: respondent did not know", d.dsUnknown, "Reported enrollment reason among poor DS households", TEAL));
         if (d.reliability != null && !d.reliability.isEmpty()) {
             TextView caution = body("Interpret with caution: " + d.reliability, 12, GOLD);
             caution.setPadding(dp(12), dp(12), dp(12), dp(12));
@@ -618,6 +640,9 @@ public final class MainActivity extends Activity {
         String code, name, reliability;
         int samplePoor;
         double poorHouseholds, population, poorPopulation, poverty, vup, finance, exclusion, exclusionLow, exclusionHigh, excludedHouseholds;
+        double creditDenial, creditIncome, creditCollateral, creditDebtHistory, creditLoanPurpose, creditOther;
+        double dsNoWorkers, dsCareDisability, dsUnknown;
+        int creditDenialSample, directSupportSample;
     }
     private static final class Point { final double x, y; Point(double x, double y) { this.x = x; this.y = y; } }
     private static final class Boundary {

@@ -44,6 +44,20 @@ VUP_MODULES = {
     "CS_S9D5_Financial_Services.dta": ("s9d1q1", "s9d5q1"),
 }
 
+CREDIT_DENIAL_REASONS = {
+    1: "insufficient_income",
+    2: "insufficient_collateral",
+    3: "debt_history_problems",
+    4: "unclear_loan_purpose",
+    5: "other_loan_denial_reason",
+}
+
+DIRECT_SUPPORT_ENROLLMENT_REASONS = {
+    1: "vup_ds_reason_no_household_workers",
+    2: "vup_ds_reason_care_for_severe_disability",
+    3: "vup_ds_reason_dont_know",
+}
+
 
 def read_stata(path: Path, columns: list[str] | None = None) -> pd.DataFrame:
     """Read numeric Stata values without converting value labels to strings."""
@@ -80,6 +94,42 @@ def household_financial_flags(data_dir: Path) -> pd.DataFrame:
     ].max()
     collapsed.index = collapsed.index.astype("int64")
     return collapsed
+
+
+def household_credit_and_vup_reasons(data_dir: Path) -> pd.DataFrame:
+    """Collapse reported loan-denial and VUP-DS enrollment reasons to household level.
+
+    Reason indicators can overlap when a household has multiple loan records.
+    They describe recorded reasons among respondents, not causes for having no
+    account or proof of VUP eligibility.
+    """
+    credit = read_stata(
+        data_dir / "CS_S10A1_A2_credits.dta",
+        ["hhid", "s10aq1", "s10aq2"],
+    )
+    credit = credit.loc[credit["s10aq1"].eq(1)].copy()
+    for code, name in CREDIT_DENIAL_REASONS.items():
+        credit[name] = credit["s10aq2"].eq(code).astype("int8")
+    credit["credit_denial_recorded"] = credit["s10aq2"].isin(CREDIT_DENIAL_REASONS).astype("int8")
+    credit_flags = credit.groupby("hhid", as_index=True)[
+        ["credit_denial_recorded", *CREDIT_DENIAL_REASONS.values()]
+    ].max()
+
+    direct = read_stata(
+        data_dir / "CS_S9D1_Direct_Support.dta",
+        ["hhid", "s9d1q2", "s9d1q3"],
+    )
+    direct = direct.loc[direct["s9d1q2"].eq(1)].copy()
+    for code, name in DIRECT_SUPPORT_ENROLLMENT_REASONS.items():
+        direct[name] = direct["s9d1q3"].eq(code).astype("int8")
+    direct["direct_support_any"] = 1
+    direct_flags = direct.groupby("hhid", as_index=True)[
+        ["direct_support_any", *DIRECT_SUPPORT_ENROLLMENT_REASONS.values()]
+    ].max()
+
+    result = credit_flags.join(direct_flags, how="outer")
+    result.index = result.index.astype("int64")
+    return result
 
 
 def weighted_estimate(
@@ -154,6 +204,15 @@ def analyze(data_dir: Path) -> pd.DataFrame:
     if poverty["broad_financial_or_tontine_access"].isna().any():
         raise ValueError("Savings module is missing households; inspect before treating missing access as zero.")
 
+    additional = household_credit_and_vup_reasons(data_dir)
+    poverty = poverty.merge(additional, how="left", left_on="hhid", right_index=True, validate="one_to_one")
+    additional_flags = [
+        "credit_denial_recorded", *CREDIT_DENIAL_REASONS.values(), "direct_support_any",
+        *DIRECT_SUPPORT_ENROLLMENT_REASONS.values(),
+    ]
+    for flag in additional_flags:
+        poverty[flag] = poverty[flag].fillna(0).astype("int8")
+
     poverty["double_excluded"] = (
         poverty["vup_any"].eq(0) & poverty["bank_or_mobile_account"].eq(0)
     ).astype("int8")
@@ -171,6 +230,19 @@ def analyze(data_dir: Path) -> pd.DataFrame:
             "tontine_participation_among_poor": weighted_estimate(group, "tontine_participation", poor_domain),
             "double_exclusion_among_poor": weighted_estimate(group, "double_excluded", poor_domain),
         }
+        poor_with_denial = poor_domain & group["credit_denial_recorded"].eq(1)
+        poor_direct_support = poor_domain & group["direct_support_any"].eq(1)
+        for name in CREDIT_DENIAL_REASONS.values():
+            measures[f"{name}_among_poor_with_recorded_loan_denial"] = weighted_estimate(
+                group, name, poor_with_denial
+            )
+        for name in DIRECT_SUPPORT_ENROLLMENT_REASONS.values():
+            measures[f"{name}_among_poor_direct_support_households"] = weighted_estimate(
+                group, name, poor_direct_support
+            )
+        measures["credit_denial_recorded_among_poor"] = weighted_estimate(
+            group, "credit_denial_recorded", poor_domain
+        )
         row: dict[str, object] = {
             "district_code": int(district),
             "district": DISTRICTS.get(int(district), "Unknown"),
@@ -185,6 +257,7 @@ def analyze(data_dir: Path) -> pd.DataFrame:
             row[f"{name}_se"] = estimate["se"]
             row[f"{name}_ci_low"] = estimate["ci_low"]
             row[f"{name}_ci_high"] = estimate["ci_high"]
+            row[f"{name}_sample_n"] = estimate["n"]
         row["estimated_double_excluded_poor_households"] = float(
             (group["weight"] * group["poor"] * group["double_excluded"]).sum()
         )
