@@ -3,3 +3,7 @@ __pycache__/
 Microdata/**/*.dta
 .work/
 mobile_app/build/
+
+.venv/
+__pycache__/
+*.pyc

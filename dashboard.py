@@ -10,6 +10,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from lab.data import reliability_labels
+from lab.theme import AMBER, apply_theme
+from lab.ui import hero, kpi_card, ranked_bars
+
 
 ROOT = Path(__file__).resolve().parent
 CSV_PATH = ROOT / "outputs" / "eicv7_district_double_exclusion.csv"
@@ -74,6 +78,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+apply_theme()
 
 
 @st.cache_data(show_spinner="Loading EICV7 district estimates…")
@@ -130,16 +135,19 @@ national_double_count = data["estimated_double_excluded_poor_households"].sum()
 national_double = national_double_count / poor_households
 
 
+_measures = list(METRICS)
+if st.session_state.get("overview_measure") not in METRICS:
+    st.session_state["overview_measure"] = _measures[0]
+
 with st.sidebar:
-    st.markdown("### Explore the evidence")
-    st.caption("EICV7 2023/24 · 30 districts")
-    metric_label = st.selectbox("Map measure", list(METRICS), index=0)
+    st.markdown("<p class='side-label'>Map</p>", unsafe_allow_html=True)
+    metric_label = st.selectbox("Map measure", _measures, key="overview_measure")
+    st.markdown("<p class='side-label'>Ranking</p>", unsafe_allow_html=True)
     selected_district = st.selectbox(
         "District detail", ["All districts", *sorted(data["district"].unique())]
     )
     sort_order = st.radio("Rank districts", ["Highest first", "Lowest first"], horizontal=True)
-    st.divider()
-    st.markdown("**Download**")
+    st.markdown("<p class='side-label'>Downloads</p>", unsafe_allow_html=True)
     if st.button("Refresh district estimates", icon=":material/refresh:", width="stretch"):
         load_data.clear()
         st.rerun()
@@ -165,29 +173,55 @@ map_data = data.copy()
 if is_rate:
     map_data[metric] = map_data[metric] * 100
 
-st.markdown(
-    """
-    <div class="hero">
-      <div class="hero-kicker">Rwanda · EICV7 2023–24</div>
-      <h1>Double exclusion in Rwanda</h1>
-      <p>Where poverty, social protection and financial access intersect across districts.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
+hero(
+    "Rwanda · EICV7 2023–24",
+    "Poor, uncovered and unbanked.",
+    "Where poverty, social protection and financial access intersect across districts.",
+    big_number=f"{national_double_count:,.0f}",
+    big_label="Doubly excluded households",
+    links=[
+        ("/Innovation_Lab_Pathways_and_Targeting", "Pathways and targeting"),
+        ("/Innovation_Lab_Insights_and_Comparison", "Insights and comparison"),
+    ],
 )
 
 kpis = st.columns(4, gap="medium")
-kpis[0].metric("Population poverty", f"{national_poverty:.1%}", help="Population-weighted district estimates, benchmarked against NISR published rates.")
-kpis[1].metric("Poor households reached by VUP", f"{national_vup:.1%}", help="Household-weighted share with a positive VUP participation flag in the five EICV7 VUP modules.")
-kpis[2].metric("Poor households with account access", f"{national_finance:.1%}", help="Household-weighted share where at least one member reports a bank or mobile-money account.")
-kpis[3].metric("Poor households with neither", f"{national_double:.1%}", f"≈{national_double_count:,.0f} households", help="Household-weighted estimate with neither observed VUP participation nor a bank/mobile-money account.")
+with kpis[0]:
+    kpi_card("Population poverty", f"{national_poverty:.1%}", pct=national_poverty)
+with kpis[1]:
+    kpi_card("Poor households reached by VUP", f"{national_vup:.1%}", pct=national_vup)
+with kpis[2]:
+    kpi_card("Poor households with account access", f"{national_finance:.1%}", pct=national_finance)
+with kpis[3]:
+    kpi_card("Poor households with neither", f"{national_double:.1%}", pct=national_double, accent=True)
+
+leak_col, look_col = st.columns(2, gap="large")
+with leak_col:
+    st.subheader("Where the leak is")
+    st.caption("Each bar is a smaller group of the same poor households.")
+    leak = pd.DataFrame(
+        {
+            "Stage": ["Poor households", "Not reached by VUP", "Neither VUP nor an account"],
+            "Households": [
+                poor_households,
+                (1 - national_vup) * poor_households,
+                national_double_count,
+            ],
+        }
+    )
+    ranked_bars(leak, "Stage", "Households")
+with look_col:
+    st.subheader("Districts to look at first")
+    st.caption("Highest double-exclusion rate among poor households.")
+    look = data.sort_values("double_exclusion_among_poor", ascending=False).head(8)
+    ranked_bars(look.assign(Rate=look["double_exclusion_among_poor"] * 100), "district", "Rate", accent=True)
 
 st.markdown("<div class='section-note'>Coverage and overlap measures are calculated among poor households. Poverty uses population weights.</div>", unsafe_allow_html=True)
 
 map_col, rank_col = st.columns([1.25, 0.9], gap="large")
 with map_col:
     st.subheader("Geographic pattern")
-    st.markdown(f"<div class='section-note'>District distribution · {metric_label.lower()}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-note'>District distribution · {metric_label.lower()}. Change the measure from Map in the sidebar.</div>", unsafe_allow_html=True)
     # Draw the same GeoJSON coordinates as the Android app and fit the SVG
     # viewBox to Rwanda's actual district bounds. Plotly's geo renderer was
     # leaving the country at world-map scale in some browser sessions.
@@ -213,7 +247,7 @@ with map_col:
 
     values = map_data[metric].fillna(0).astype(float)
     max_value = max(float(values.max()), 1e-12)
-    start_rgb, end_rgb = (231, 243, 243), (23, 54, 93)
+    scale_stops = ((246, 231, 200), (217, 145, 54), (18, 53, 91))
     paths = []
     for feature in geojson["features"]:
         properties = feature["properties"]
@@ -222,8 +256,12 @@ with map_col:
         if row is None:
             continue
         fraction = max(0.0, min(1.0, float(getattr(row, metric)) / max_value))
+        slot = fraction * (len(scale_stops) - 1)
+        left = min(int(slot), len(scale_stops) - 2)
+        blend = slot - left
         fill = "#" + "".join(
-            f"{round(a + (b - a) * fraction):02X}" for a, b in zip(start_rgb, end_rgb)
+            f"{round(a + (b - a) * blend):02X}"
+            for a, b in zip(scale_stops[left], scale_stops[left + 1])
         )
         geometry = feature["geometry"]
         polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
@@ -273,11 +311,11 @@ with map_col:
         'style="display:block;width:100%;height:auto;max-width:100%">'
         + "".join(paths) + svg_label + "</svg>"
     )
-    st.markdown(svg, unsafe_allow_html=True)
+    st.markdown(f'<div class="map-card">{svg}</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="section-note" style="text-align:right">Lower '
         f'<span style="display:inline-block;width:110px;height:8px;border-radius:6px;'
-        f'background:linear-gradient(90deg,#E7F3F3,#17365D);vertical-align:middle"></span> Higher '
+        f'background:linear-gradient(90deg,#F6E7C8,#D99136,#12355B);vertical-align:middle"></span> Higher '
         f'· {html.escape(metric_unit)}</div>',
         unsafe_allow_html=True,
     )
@@ -289,8 +327,20 @@ with rank_col:
     ranked = map_data.sort_values(metric, ascending=(sort_order == "Lowest first")).copy()
     ranked["Estimate"] = ranked[metric].map(lambda v: f"{v:,.1f}%" if is_rate else f"{v:,.0f}")
     ranked["Poor HH sampled"] = ranked["sample_poor_households"].map(lambda v: f"{int(v):,}")
-    ranked["Reliability"] = ranked["reliability_flag"].fillna("").replace("", "—")
-    rank_view = ranked[["district", "Estimate", "Poor HH sampled", "Reliability"]].rename(columns={"district": "District"})
+    se_col = "double_exclusion_among_poor_se"
+    n_col = "double_exclusion_among_poor_sample_n"
+    show_reliability = se_col in data.columns and n_col in data.columns
+    if show_reliability:
+        labels = reliability_labels(
+            data["double_exclusion_among_poor"].to_numpy(dtype=float),
+            data[se_col].to_numpy(dtype=float),
+            data[n_col].to_numpy(dtype=float),
+        )
+        ranked["Reliability"] = pd.Series(labels, index=data.index).loc[ranked.index].to_numpy()
+        rank_columns = ["district", "Estimate", "Poor HH sampled", "Reliability"]
+    else:
+        rank_columns = ["district", "Estimate", "Poor HH sampled"]
+    rank_view = ranked[rank_columns].rename(columns={"district": "District"})
     st.dataframe(
         rank_view,
         hide_index=True,
@@ -320,11 +370,22 @@ with left:
         y="district",
         orientation="h",
         text="estimated_double_excluded_poor_households",
-        color_discrete_sequence=[COLORS["teal"]],
+        color_discrete_sequence=[AMBER],
         labels={"estimated_double_excluded_poor_households": "Estimated households", "district": "District"},
     )
     bar.update_traces(texttemplate="%{text:,.0f}", textposition="outside", cliponaxis=False, hovertemplate="%{y}<br>Estimated households: %{x:,.0f}<extra></extra>")
-    bar.update_layout(height=430, margin=dict(l=0,r=35,t=8,b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, xaxis=dict(showgrid=True, gridcolor=COLORS["line"], zeroline=False), yaxis=dict(title=None), font=dict(family="Aptos, Segoe UI, Arial, sans-serif"))
+    bar.update_layout(
+        height=430,
+        margin=dict(l=0, r=35, t=8, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=11, family="Inter, system-ui, sans-serif", color="#10263D")),
+        yaxis=dict(title=None, showgrid=False, zeroline=False, tickfont=dict(size=11, family="Inter, system-ui, sans-serif", color="#10263D")),
+        font=dict(family="Inter, system-ui, sans-serif", color="#10263D", size=12),
+        hoverlabel=dict(bgcolor="#FFFFFF", font=dict(color="#10263D")),
+        transition={"duration": 600, "easing": "cubic-in-out"},
+    )
     st.plotly_chart(
         bar,
         width="stretch",
