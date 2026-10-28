@@ -1,3 +1,5 @@
 __pycache__/
 *.py[cod]
 Microdata/**/*.dta
+.work/
+mobile_app/build/

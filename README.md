@@ -56,7 +56,9 @@ The dashboard provides a district choropleth, selectable measures, district rank
 
 ## Deliverables
 
-The current analysis outputs are in `outputs/eicv7_district_double_exclusion.csv`. The two-page policy brief and seven-slide presentation are in `deliverables/`.
+The current analysis outputs are in `outputs/eicv7_district_double_exclusion.csv`. The two-page policy brief, seven-slide presentation and installable Android APK are in `deliverables/`.
+
+The Android app source, offline aggregate data assets and Windows build instructions are in `mobile_app/`. Build a fresh APK with `mobile_app/build_android.ps1`; see [the mobile app README](mobile_app/README.md) for installation steps. The app contains only district aggregates and public boundaries, not household-level microdata.
 
 Rebuild the brief after changing its text or analysis values:
 
